@@ -83,6 +83,6 @@ Each simulated trade must resolve through TP or SL within a configured horizon. 
 - `AI_ASSIST`: Bitey advises/logs; local Risk Gate remains authoritative.
 - `AI_FILTER`: Bitey must return matching direction, sufficient confidence and risk approval before an order is permitted.
 
-The EA defaults to `AI_ASSIST` and `InpDemoOnly=true`. Live execution therefore requires an explicit configuration change and subsequent validation.
+The EA defaults to `AI_ASSIST` and `InpEnableExecution=false`. Execution therefore requires an explicit configuration change and subsequent validation. The EA also writes `BiteyAdaptiveReport.tch` into the MT4 Files directory as a plain-text research artifact (the `.tch` extension is only a project artifact format; it is not encryption).
 
 This is an adaptive research architecture, not a claim that the selected strategy will be profitable. Walk-forward and out-of-sample validation remain mandatory before any live promotion.
