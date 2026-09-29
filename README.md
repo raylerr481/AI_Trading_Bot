@@ -49,3 +49,16 @@ This bridge does not contain `OrderSend` and does not bypass the EA Risk Gate. A
 3. Add backtest comparison: local-only vs AI-assisted.
 4. Demo-only execution.
 5. Only after explicit validation, consider live execution.
+
+
+## Controlled optimization architecture
+
+The next layer is a research loop, not autonomous live trading:
+
+`baseline -> hypothesis -> candidate EA -> backtest -> validation -> out-of-sample -> demo`
+
+Bitey may use an external AI model as a bounded second opinion for code review, market-regime analysis, and backtest-result interpretation. The external model does not receive broker credentials, does not place orders, and does not bypass the MT4 Risk Gate.
+
+The current v1.33 baseline is preserved as the comparison point. Candidate versions must be evaluated under the same risk settings before promotion.
+
+See `docs/optimization-loop.md` and `bridge/schemas/optimization_experiment.schema.json`.
