@@ -12,7 +12,7 @@ struct AITradingSignal
 
 string AIJsonString(string body,string key,string fallback="")
 {
-   string needle="\""+key+"\":\"";
+   string needle="\"" + key + "\":\"";
    int p=StringFind(body,needle);
    if(p<0) return fallback;
    p+=StringLen(needle);
@@ -23,10 +23,11 @@ string AIJsonString(string body,string key,string fallback="")
 
 double AIJsonNumber(string body,string key,double fallback=0.0)
 {
-   string needle="\""+key+"\":";
+   string needle="\"" + key + "\":";
    int p=StringFind(body,needle);
    if(p<0) return fallback;
    p+=StringLen(needle);
+   while(p<StringLen(body) && (StringGetChar(body,p)==' ' || StringGetChar(body,p)=='\t')) p++;
    int e=StringFind(body,",",p);
    if(e<0) e=StringFind(body,"}",p);
    if(e<0) return fallback;
@@ -35,13 +36,14 @@ double AIJsonNumber(string body,string key,double fallback=0.0)
 
 bool AIJsonBool(string body,string key,bool fallback=false)
 {
-   string needle="\""+key+"\":";
+   string needle="\"" + key + "\":";
    int p=StringFind(body,needle);
    if(p<0) return fallback;
    p+=StringLen(needle);
+   while(p<StringLen(body) && (StringGetChar(body,p)==' ' || StringGetChar(body,p)=='\t')) p++;
    string value=StringSubstr(body,p,5);
-   if(StringFind(value,"true")>=0) return true;
-   if(StringFind(value,"false")>=0) return false;
+   if(StringFind(value,"true")==0) return true;
+   if(StringFind(value,"false")==0) return false;
    return fallback;
 }
 
@@ -53,14 +55,19 @@ bool AIAnalyzeSnapshot(
    double bid,
    double ask,
    double spread_points,
+   double spread_atr_ratio,
    double atr_points,
    double adx,
    double rsi,
    double ema_fast,
    double ema_slow,
    double ema_macro,
+   double macro_slope,
    double close_price,
    double previous_close,
+   int entry_score,
+   int score_gap,
+   string htf_direction,
    string regime,
    int timeout_ms,
    AITradingSignal &signal
@@ -75,11 +82,13 @@ bool AIAnalyzeSnapshot(
    string json=StringFormat(
       "{\"symbol\":\"%s\",\"timeframe\":\"%s\","
       "\"bid\":%.10f,\"ask\":%.10f,\"spread_points\":%.2f,"
-      "\"atr_points\":%.2f,\"adx\":%.2f,\"rsi\":%.2f,"
+      "\"spread_atr_ratio\":%.4f,\"atr_points\":%.2f,\"adx\":%.2f,\"rsi\":%.2f,"
       "\"ema_fast\":%.10f,\"ema_slow\":%.10f,\"ema_macro\":%.10f,"
-      "\"close\":%.10f,\"previous_close\":%.10f,\"regime\":\"%s\"}",
-      symbol,timeframe,bid,ask,spread_points,atr_points,adx,rsi,
-      ema_fast,ema_slow,ema_macro,close_price,previous_close,regime
+      "\"macro_slope\":%.10f,\"close\":%.10f,\"previous_close\":%.10f,"
+      "\"entry_score\":%d,\"score_gap\":%d,\"htf_direction\":\"%s\",\"regime\":\"%s\"}",
+      symbol,timeframe,bid,ask,spread_points,spread_atr_ratio,atr_points,adx,rsi,
+      ema_fast,ema_slow,ema_macro,macro_slope,close_price,previous_close,
+      entry_score,score_gap,htf_direction,regime
    );
 
    char post[];
@@ -98,7 +107,7 @@ bool AIAnalyzeSnapshot(
 
    string body=CharArrayToString(result,0,-1,CP_UTF8);
    string action=AIJsonString(body,"action","HOLD");
-   StringToUpper(action);
+   action=StringToUpper(action);
    if(action!="BUY" && action!="SELL" && action!="HOLD") action="HOLD";
 
    signal.action=action;
