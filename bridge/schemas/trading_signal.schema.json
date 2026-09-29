@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Bitey Trading Analysis Signal",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["action", "confidence", "risk_allowed", "strategy", "reason"],
+  "properties": {
+    "action": {"type": "string", "enum": ["BUY", "SELL", "HOLD"]},
+    "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+    "risk_allowed": {"type": "boolean"},
+    "strategy": {"type": "string", "maxLength": 120},
+    "reason": {"type": "string", "maxLength": 1000}
+  }
+}
