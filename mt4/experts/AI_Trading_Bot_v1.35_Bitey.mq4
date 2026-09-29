@@ -467,7 +467,7 @@ int OnInit()
    WriteCSVHeader();
    RefreshMarketState();
    RefreshAudit();
-   MetricsRefresh(g_metrics,Symbol(),Period());
+   MetricsRefresh(g_metrics,Symbol(),Period(),InpMagicNumber);
 
    Print("Bitey IA v1.34 initialized. Best=",g_metrics.best_strategy,
          " score=",DoubleToString(g_metrics.best_strategy_score,3),
@@ -479,7 +479,7 @@ int OnInit()
 
 void OnTick()
 {
-   MetricsRefresh(g_metrics,Symbol(),Period());
+   MetricsRefresh(g_metrics,Symbol(),Period(),InpMagicNumber);
    RefreshMarketState();
 
    if(!NewBar()) return;
