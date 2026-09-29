@@ -103,6 +103,56 @@ bool SessionOK()
    return (h>=InpStartHour && h<InpEndHour);
 }
 
+bool AdaptiveRiskGate(int dir,double atr,double &sl_dist,double &tp_dist,string &reason)
+{
+   reason="";
+   if(atr<=0.0) return false;
+
+   double atr_points=atr/Point;
+   double spread=SpreadPoints();
+   double spread_ratio=(atr_points>0.0 ? spread/atr_points : 999.0);
+
+   // Hard market-quality filters.
+   if(spread>InpMaxSpreadPoints) { reason="spread_limit"; return false; }
+   if(spread_ratio>InpMaxSpreadATRRatio) { reason="spread_atr_ratio"; return false; }
+   if(atr_points<InpMinATRPoints) { reason="atr_too_low"; return false; }
+
+   // Do not trade against a confirmed directional regime.
+   if(g_regime==REGIME_UPTREND && dir<0) { reason="against_uptrend"; return false; }
+   if(g_regime==REGIME_DOWNTREND && dir>0) { reason="against_downtrend"; return false; }
+
+   // High volatility gets wider protection but lower reward multiple.
+   // Range conditions use tighter objectives and require a non-trend strategy.
+   double sl_mult=InpSLMult;
+   double tp_mult=InpTPMult;
+
+   if(g_regime==REGIME_HIGH_VOL)
+   {
+      sl_mult=MathMax(InpSLMult,1.50);
+      tp_mult=MathMax(2.00,MathMin(InpTPMult,2.20));
+   }
+   else if(g_regime==REGIME_RANGE)
+   {
+      sl_mult=MathMin(InpSLMult,1.10);
+      tp_mult=MathMin(InpTPMult,1.80);
+   }
+
+   // When spread consumes a meaningful part of ATR, demand a cleaner setup.
+   if(spread_ratio>0.12)
+   {
+      tp_mult*=1.10;
+      if(g_best_strategy==1 || g_best_strategy==6)
+         return false;
+   }
+
+   sl_dist=sl_mult*atr;
+   tp_dist=tp_mult*atr;
+
+   if(sl_dist<=0.0 || tp_dist<=0.0) return false;
+   reason="pass";
+   return true;
+}
+
 bool CooldownOK()
 {
    if(g_last_entry_time==0) return true;
@@ -426,11 +476,8 @@ void TryTrade()
    if(!InpEnableExecution) return;
    if(OpenTrades()>=InpMaxTrades) return;
    if(!SessionOK() || !CooldownOK()) return;
-   if(SpreadPoints()>InpMaxSpreadPoints) return;
-
    double atr=iATR(Symbol(),Period(),InpATRPeriod,1);
-   if(atr<=0.0 || atr/Point<InpMinATRPoints) return;
-   if(SpreadPoints()/(atr/Point)>InpMaxSpreadATRRatio) return;
+   if(atr<=0.0) return;
 
    int dir,score,gap;
    if(!LocalSignal(dir,score,gap)) return;
@@ -441,8 +488,11 @@ void TryTrade()
    bool ai_ok=false;
    if(!AIAllows(dir,ai,ai_ok)) return;
 
-   double sl_dist=InpSLMult*atr;
-   double tp_dist=InpTPMult*atr;
+   double sl_dist=0.0;
+   double tp_dist=0.0;
+   string gate_reason="";
+   if(!AdaptiveRiskGate(dir,atr,sl_dist,tp_dist,gate_reason)) return;
+
    double lots=LotsForRisk(sl_dist/Point);
    if(lots<=0.0) return;
 
@@ -454,7 +504,7 @@ void TryTrade()
                        "BiteyIA_v1.35",InpMagicNumber,0,clrNONE);
    else
       ticket=OrderSend(Symbol(),OP_SELL,lots,Bid,5,Bid+sl_dist,Bid-tp_dist,
-                       "BiteyIA_v1.34",InpMagicNumber,0,clrNONE);
+                       "BiteyIA_v1.35",InpMagicNumber,0,clrNONE);
 
    if(ticket>0) g_last_entry_time=TimeCurrent();
 
@@ -469,7 +519,7 @@ int OnInit()
    RefreshAudit();
    MetricsRefresh(g_metrics,Symbol(),Period(),InpMagicNumber);
 
-   Print("Bitey IA v1.34 initialized. Best=",g_metrics.best_strategy,
+   Print("Bitey IA v1.35 initialized. Best=",g_metrics.best_strategy,
          " score=",DoubleToString(g_metrics.best_strategy_score,3),
          " regime=",RegimeName(g_regime),
          " AI mode=",IntegerToString(InpAIMode));
