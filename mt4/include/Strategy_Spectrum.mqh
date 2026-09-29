@@ -124,8 +124,16 @@ int StrategySignal(string s,int tf,int shift,int id)
    }
    if(id==7)
    {
-      double htfFast=iMA(s,PERIOD_H4,8,0,MODE_EMA,PRICE_CLOSE,shift+1);
-      double htfSlow=iMA(s,PERIOD_H4,21,0,MODE_EMA,PRICE_CLOSE,shift+1);
+      // Align the higher-timeframe lookup by timestamp, not by the
+      // lower-timeframe bar index. This prevents H1/H4 shift mismatch.
+      datetime barTime=iTime(s,tf,shift);
+      int htfShift=iBarShift(s,PERIOD_H4,barTime,false);
+      if(htfShift<0) return 0;
+
+      // Use the last completed H4 candle for the signal.
+      int completedHtfShift=htfShift+1;
+      double htfFast=iMA(s,PERIOD_H4,8,0,MODE_EMA,PRICE_CLOSE,completedHtfShift);
+      double htfSlow=iMA(s,PERIOD_H4,21,0,MODE_EMA,PRICE_CLOSE,completedHtfShift);
       double ph=iHigh(s,tf,shift+2), pc=iHigh(s,tf,shift+3);
       double pl=iLow(s,tf,shift+2), lc=iLow(s,tf,shift+3);
       if(ph>pc && ph>iHigh(s,tf,shift+1) && htfFast>htfSlow) return 1;
