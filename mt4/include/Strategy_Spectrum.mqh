@@ -184,13 +184,24 @@ bool SimulateWindow(string s,int tf,int id,int first_shift,int last_shift,int ho
          double hi=iHigh(s,tf,f),lo=iLow(s,tf,f);
          if(dir>0)
          {
-            if(lo<=entry-slDist){resolved=true;result=-slDist;break;}
-            if(hi>=entry+tpDist){resolved=true;win=true;result=tpDist;break;}
+            bool hitSL=(lo<=entry-slDist);
+            bool hitTP=(hi>=entry+tpDist);
+
+            // With OHLC data the intrabar order is unknown. If both levels
+            // are touched in the same candle, resolve conservatively as SL.
+            if(hitSL && hitTP){resolved=true;result=-slDist;break;}
+            if(hitSL){resolved=true;result=-slDist;break;}
+            if(hitTP){resolved=true;win=true;result=tpDist;break;}
          }
          else
          {
-            if(hi>=entry+slDist){resolved=true;result=-slDist;break;}
-            if(lo<=entry-tpDist){resolved=true;win=true;result=tpDist;break;}
+            bool hitSL=(hi>=entry+slDist);
+            bool hitTP=(lo<=entry-tpDist);
+
+            // Same conservative rule for short trades.
+            if(hitSL && hitTP){resolved=true;result=-slDist;break;}
+            if(hitSL){resolved=true;result=-slDist;break;}
+            if(hitTP){resolved=true;win=true;result=tpDist;break;}
          }
       }
       if(!resolved) continue;
