@@ -1,5 +1,5 @@
 #property strict
-#property version   "1.34"
+#property version   "1.35"
 #property description "Bitey IA adaptive strategy-spectrum EA. Research-first, local Risk Gate authoritative."
 
 #include <AI_Bridge.mqh>
@@ -47,7 +47,7 @@ input int InpEndHour=20;
 input int InpCooldownBars=3;
 input int InpMagicNumber=8883200;
 input bool InpWriteCSV=true;
-input string InpCSVFile="AI_Trading_Bot_v1.34_Bitey.csv";
+input string InpCSVFile="AI_Trading_Bot_v1.35_Bitey.csv";
 input bool InpAutoReport=true;
 input bool InpEnableExecution=false;
 input string InpAdaptiveReportFile="BiteyAdaptiveReport.tch";
@@ -223,7 +223,7 @@ void SendSBTReport(AITradingSignal &ai,bool ai_ok)
       headers=headers+"X-MT4-Token: "+InpSBTToken+"\\r\\n";
 
    string body="{";
-   body+="\"source\":\"AI_Trading_Bot_v1.34_Bitey\",";
+   body+="\"source\":\"AI_Trading_Bot_v1.35_Bitey\",";
    body+="\"symbol\":\""+JsonSafe(Symbol())+"\",";
    body+="\"timeframe\":\""+JsonSafe(TFName())+"\",";
    body+="\"timestamp\":\""+JsonSafe(TimeToString(TimeCurrent(),TIME_DATE|TIME_SECONDS))+"\",";
@@ -303,8 +303,17 @@ void RefreshAudit()
 
    if(InpAutoReport)
    {
-      Print("Bitey spectrum audit: best=",g_metrics.best_strategy,
+      Print("Bitey walk-forward audit: best=",g_metrics.best_strategy,
             " score=",DoubleToString(g_metrics.best_strategy_score,3));
+      for(int s=0;s<STRATEGY_COUNT;s++)
+         Print("  ",StrategyName(s),
+               " trainExp=",DoubleToString(g_audits[s].expectancy,5),
+               " trainPF=",DoubleToString(g_audits[s].profit_factor,2),
+               " OOS trades=",g_audits[s].validation_trades,
+               " OOS win=",DoubleToString(g_audits[s].validation_trades>0 ? 100.0*g_audits[s].validation_wins/g_audits[s].validation_trades : 0.0,1),
+               "% OOS PF=",DoubleToString(g_audits[s].validation_pf,2),
+               " OOS exp=",DoubleToString(g_audits[s].validation_expectancy,5),
+               " OOS DD=",DoubleToString(g_audits[s].validation_drawdown,5));
       for(int s=0;s<STRATEGY_COUNT;s++)
          Print("  ",StrategyName(s),
                " trades=",g_audits[s].trades,
@@ -437,7 +446,7 @@ void TryTrade()
 
    if(dir>0)
       ticket=OrderSend(Symbol(),OP_BUY,lots,Ask,5,Ask-sl_dist,Ask+tp_dist,
-                       "BiteyIA_v1.34",InpMagicNumber,0,clrNONE);
+                       "BiteyIA_v1.35",InpMagicNumber,0,clrNONE);
    else
       ticket=OrderSend(Symbol(),OP_SELL,lots,Bid,5,Bid+sl_dist,Bid-tp_dist,
                        "BiteyIA_v1.34",InpMagicNumber,0,clrNONE);
