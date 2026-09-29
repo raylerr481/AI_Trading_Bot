@@ -1,328 +1,51 @@
-# AI Trading Bot — MetaTrader 4 + AI
+# Bitey IA ↔ AI Trading Bot Bridge
 
-Repositorio central para desarrollar, versionar, probar y operar un **AI Trading Bot para MetaTrader 4 (MT4)**.
+This repository is the MetaTrader 4 trading module connected to Bitey IA.
 
-El objetivo es separar claramente:
+## Boundary
 
-- **GitHub** → código, versiones, configuraciones, estrategias, pruebas y documentación.
-- **MetaTrader 4** → conexión con el broker, datos de mercado, ejecución del Expert Advisor (EA), órdenes y gestión de posiciones.
-- **AI Engine** → análisis de mercado, diagnóstico, selección de señales y evaluación estadística.
-- **Bridge/API** → comunicación segura entre MT4 y el motor de IA.
+- **Bitey IA**: market analysis and structured advisory signal.
+- **AI Trading Bot / MT4**: local indicators, strategy state and final Risk Gate.
+- **MT4**: broker communication and order execution.
+- **Bitey IA never executes MT4 orders.**
 
-> **Importante:** GitHub por sí solo no ejecuta un EA de MT4 ni mantiene una terminal MT4 conectada al mercado. Para operar en tiempo real, MT4 debe estar ejecutándose en un Windows/PC/VPS y el EA debe comunicarse con el motor externo.
+## Read-only flow
 
-## Arquitectura objetivo
+`MT4 snapshot → POST /api/v2/trading/analyze → structured signal → local Risk Gate → optional execution`
 
-```
-                         GITHUB
-                           │
-                 código / versiones / CI
-                           │
-                           ▼
-                  AI TRADING BOT REPO
-                           │
-             ┌─────────────┴─────────────┐
-             │                           │
-             ▼                           ▼
-       MQL4 / EA                  AI / Analytics
-       estrategias               señales / modelos
-       gestión riesgo            diagnóstico / scoring
-             │                           │
-             └─────────────┬─────────────┘
-                           │
-                      BRIDGE / API
-                           │
-                           ▼
-                    METATRADER 4
-                           │
-                    Broker / Mercado
-                           │
-                           ▼
-                 precios / órdenes / fills
-```
+The first integration is deliberately analysis-only. If the API is unavailable or returns an invalid signal, the bridge defaults to **HOLD** and `risk_allowed=false`.
 
-## ¿Se puede conectar GitHub con MT4?
+## MT4 configuration
 
-**Sí, pero indirectamente.**
+In MetaTrader 4, add the Bitey backend host to:
 
-MT4 no debe depender directamente de GitHub para cada operación.
+**Tools → Options → Expert Advisors → Allow WebRequest for listed URL**
 
-El flujo recomendado es:
+The EA should call `mt4/include/AI_Bridge.mqh` and keep its existing local Risk Gate authoritative.
 
-1. El código MQL4 se mantiene en GitHub.
-2. El EA se compila en MetaEditor.
-3. El EA se instala en la terminal MT4.
-4. MT4 recibe precios y ejecuta las órdenes.
-5. El EA envía datos seleccionados a un servidor/API de IA.
-6. El motor de IA devuelve una decisión estructurada.
-7. El EA aplica filtros locales de riesgo.
-8. Solo después de pasar los controles, MT4 puede ejecutar la orden.
-9. El resultado de la operación vuelve al sistema para análisis.
+Recommended endpoint:
 
-MQL4 dispone de comunicación HTTP mediante `WebRequest()`, siempre que el servidor utilizado esté autorizado en las opciones de MT4.
+`https://<bitey-render-host>/api/v2/trading/analyze`
 
-## Modelo de IA
+Optional server authentication:
 
-La IA no debe tener acceso irrestricto a la cuenta.
+- Render environment variable: `TRADING_MODULE_TOKEN`
+- MT4 request header: `X-Trading-Module-Token`
 
-El diseño será:
+Do not commit the token to GitHub.
 
-```
-MARKET DATA
-    ↓
-FEATURES
-    ↓
-AI ANALYSIS
-    ↓
-SIGNAL
-    ↓
-RISK GATE
-    ↓
-MT4 EXECUTION
-```
+## Signal contract
 
-Una señal puede tener una estructura como:
+See `bridge/schemas/trading_signal.schema.json`.
 
-```json
-{
-  "symbol": "EURUSD",
-  "timeframe": "H1",
-  "action": "BUY",
-  "confidence": 0.72,
-  "entry": 1.16500,
-  "stop_loss": 1.16200,
-  "take_profit": 1.17100,
-  "strategy": "trend",
-  "reason": "EMA alignment + ADX + RSI + momentum",
-  "risk_allowed": true
-}
-```
+## Safety
 
-La IA **propone** la operación; el **Risk Gate local del EA** decide si puede ejecutarse.
+This bridge does not contain `OrderSend` and does not bypass the EA Risk Gate. A failed API request, malformed response, low confidence or rejected risk state must remain non-executable.
 
-## Funciones previstas
+## Next integration stages
 
-### 1. Market Analysis
-
-- tendencia
-- volatilidad
-- momentum
-- ADX
-- RSI
-- EMA
-- ATR
-- estructura de mercado
-- soportes y resistencias
-- Fibonacci
-- régimen de mercado
-- spread
-- horario
-- contexto de timeframe superior
-
-### 2. AI Decision Engine
-
-La IA podrá:
-
-- analizar las características del mercado
-- comparar señales
-- detectar condiciones débiles
-- clasificar el régimen
-- explicar la señal
-- registrar el resultado
-- comparar estrategias
-- detectar degradación del rendimiento
-- producir recomendaciones de parámetros para pruebas futuras
-
-### 3. Risk Gate
-
-El EA debe conservar el control final sobre:
-
-- riesgo por operación
-- lote máximo
-- número máximo de posiciones
-- spread máximo
-- SL obligatorio
-- TP
-- drawdown máximo
-- pérdida diaria máxima
-- horario permitido
-- cooldown
-- bloqueo después de errores
-- bloqueo si la respuesta de IA no es válida
-
-### 4. MT4 Execution
-
-El EA será responsable de:
-
-- `OrderSend`
-- modificación de órdenes
-- cierre de posiciones
-- trailing stop
-- break-even
-- control de errores
-- registro de fills
-- sincronización de posiciones
-- métricas MAE/MFE
-- exportación de datos
-
-## Modos de funcionamiento
-
-### BACKTEST
-
-```
-Historical Data
-      ↓
-MT4 Strategy Tester
-      ↓
-EA
-      ↓
-Diagnostics
-      ↓
-CSV / Reports
-```
-
-### DEMO
-
-```
-Live Market
-     ↓
-MT4 Demo
-     ↓
-EA
-     ↓
-AI Engine
-     ↓
-Risk Gate
-     ↓
-Demo Order
-```
-
-### LIVE
-
-Solo después de validar suficientemente el sistema:
-
-```
-Live Market
-     ↓
-MT4
-     ↓
-EA
-     ↓
-AI Engine
-     ↓
-Risk Gate
-     ↓
-Broker
-```
-
-## GitHub Actions
-
-GitHub Actions se utilizará principalmente para:
-
-- validar código
-- ejecutar tests
-- revisar cambios
-- construir artefactos
-- validar configuraciones
-- generar documentación
-- empaquetar versiones del EA
-
-No se utilizará GitHub Actions como sustituto de una terminal MT4 permanente para trading en vivo.
-
-Para ejecución continua, el componente que necesita estar conectado al mercado debe permanecer en Windows/VPS con MT4.
-
-## Estructura prevista
-
-```
-AI_Trading_Bot/
-│
-├── README.md
-│
-├── mt4/
-│   ├── experts/
-│   │   ├── AI_Trading_Bot.mq4
-│   │   └── AI_Trading_Bot_Live.mq4
-│   │
-│   ├── include/
-│   │   ├── AI_Signal.mqh
-│   │   ├── Risk_Gate.mqh
-│   │   ├── Market_Regime.mqh
-│   │   ├── Execution.mqh
-│   │   └── Diagnostics.mqh
-│   │
-│   └── indicators/
-│
-├── ai/
-│   ├── engine/
-│   ├── features/
-│   ├── models/
-│   ├── evaluation/
-│   └── prompts/
-│
-├── bridge/
-│   ├── api/
-│   ├── schemas/
-│   └── adapters/
-│
-├── strategies/
-│   ├── trend/
-│   ├── range/
-│   ├── fibonacci/
-│   ├── momentum/
-│   └── grid/
-│
-├── backtests/
-│   ├── reports/
-│   ├── csv/
-│   └── configurations/
-│
-├── tests/
-│
-├── docs/
-│
-└── .github/
-    └── workflows/
-```
-
-## Principio de seguridad
-
-La IA nunca debe poder saltarse el Risk Gate.
-
-Si la IA responde:
-
-- formato inválido
-- símbolo incorrecto
-- lote inválido
-- SL ausente
-- TP ausente
-- confianza insuficiente
-- spread excesivo
-- drawdown bloqueado
-- fuera de horario
-- riesgo superior al límite
-
-la operación debe ser **rechazada por MT4**.
-
-## Desarrollo inicial
-
-El primer objetivo será construir el núcleo alrededor de:
-
-1. **AI_Trading_Bot_v1.33 Entry Diagnostics**
-2. corrección y evolución controlada hacia v1.34+
-3. Market Regime
-4. Signal Engine
-5. Risk Gate
-6. MT4 ↔ AI Bridge
-7. Backtest diagnostics
-8. Demo execution
-9. posteriormente estrategias como Grid Bot
-
-## Estado
-
-**Repositorio inicializado para el desarrollo del AI Trading Bot para MT4.**
-
-La prioridad es construir primero una arquitectura verificable y medible antes de permitir ejecución real.
-
-## Licencia
-
-Pendiente de definir.
+1. Connect v1.33/v1.34 EA snapshot generation.
+2. Log AI signal + local Risk Gate decision to CSV.
+3. Add backtest comparison: local-only vs AI-assisted.
+4. Demo-only execution.
+5. Only after explicit validation, consider live execution.
