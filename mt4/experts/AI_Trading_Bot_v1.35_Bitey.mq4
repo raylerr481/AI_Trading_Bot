@@ -195,7 +195,12 @@ void WriteAdaptiveReport()
                 "|profit_factor=",DoubleToString(g_audits[s].profit_factor,6),
                 "|expectancy=",DoubleToString(g_audits[s].expectancy,6),
                 "|max_drawdown=",DoubleToString(g_audits[s].max_drawdown,6),
-                "|score=",DoubleToString(g_audits[s].score,6));
+                "|score=",DoubleToString(g_audits[s].score,6),
+                "|oos_trades=",IntegerToString(g_audits[s].validation_trades),
+                "|oos_wins=",IntegerToString(g_audits[s].validation_wins),
+                "|oos_pf=",DoubleToString(g_audits[s].validation_pf,6),
+                "|oos_expectancy=",DoubleToString(g_audits[s].validation_expectancy,6),
+                "|oos_drawdown=",DoubleToString(g_audits[s].validation_drawdown,6));
    }
 
    FileWrite(h,"NOTE=Research artifact only; not encrypted and not a profitability guarantee.");
