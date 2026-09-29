@@ -62,3 +62,27 @@ Bitey may use an external AI model as a bounded second opinion for code review, 
 The current v1.33 baseline is preserved as the comparison point. Candidate versions must be evaluated under the same risk settings before promotion.
 
 See `docs/optimization-loop.md` and `bridge/schemas/optimization_experiment.schema.json`.
+
+
+## v1.34 adaptive spectrum
+
+The repository now contains `mt4/experts/AI_Trading_Bot_v1.34_Bitey.mq4` plus modular engines:
+
+- `mt4/include/Market_Regime.mqh`: regime detection and Hurst estimate.
+- `mt4/include/Trading_Metrics.mqh`: real-time account/trading metrics.
+- `mt4/include/Strategy_Spectrum.mqh`: eight-strategy historical audit and bounded selector.
+- `docs/adaptive-spectrum.md`: statistical protocol and validation roadmap.
+
+The eight research models are trend following, mean reversion, momentum, volatility breakout, session bias, divergence proxy, strict range, and fractal/HTF confirmation.
+
+Each simulated trade must resolve through TP or SL within a configured horizon. Unresolved cases are excluded instead of being counted as wins. The selector considers expectancy, profit factor, win rate and drawdown.
+
+### Bitey IA modes
+
+- `AI_OFF`: local strategy spectrum only.
+- `AI_ASSIST`: Bitey advises/logs; local Risk Gate remains authoritative.
+- `AI_FILTER`: Bitey must return matching direction, sufficient confidence and risk approval before an order is permitted.
+
+The EA defaults to `AI_ASSIST` and `InpDemoOnly=true`. Live execution therefore requires an explicit configuration change and subsequent validation.
+
+This is an adaptive research architecture, not a claim that the selected strategy will be profitable. Walk-forward and out-of-sample validation remain mandatory before any live promotion.
