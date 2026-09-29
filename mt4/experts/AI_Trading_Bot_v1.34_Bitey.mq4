@@ -49,7 +49,8 @@ input int InpMagicNumber=8883200;
 input bool InpWriteCSV=true;
 input string InpCSVFile="AI_Trading_Bot_v1.34_Bitey.csv";
 input bool InpAutoReport=true;
-input bool InpDemoOnly=true;
+input bool InpEnableExecution=false;
+input string InpAdaptiveReportFile="BiteyAdaptiveReport.tch";
 
 TradingMetrics g_metrics;
 StrategyAudit g_audits[STRATEGY_COUNT];
@@ -159,6 +160,44 @@ void WriteCSV(AITradingSignal &ai,bool ai_ok)
    FileClose(h);
 }
 
+void WriteAdaptiveReport()
+{
+   if(!InpAutoReport) return;
+
+   int h=FileOpen(InpAdaptiveReportFile,FILE_TXT|FILE_WRITE|FILE_SHARE_READ);
+   if(h==INVALID_HANDLE) return;
+
+   FileWrite(h,"BITEY_ADAPTIVE_REPORT_V1");
+   FileWrite(h,"time=",TimeToString(TimeCurrent(),TIME_DATE|TIME_SECONDS));
+   FileWrite(h,"symbol=",Symbol());
+   FileWrite(h,"timeframe=",TFName());
+   FileWrite(h,"regime=",RegimeName(g_regime));
+   FileWrite(h,"hurst=",DoubleToString(g_metrics.hurst,6));
+   FileWrite(h,"best_strategy=",g_metrics.best_strategy);
+   FileWrite(h,"best_score=",DoubleToString(g_metrics.best_strategy_score,6));
+   FileWrite(h,"balance=",DoubleToString(g_metrics.balance,2));
+   FileWrite(h,"equity=",DoubleToString(g_metrics.equity,2));
+   FileWrite(h,"drawdown_pct=",DoubleToString(g_metrics.drawdown_pct,4));
+   FileWrite(h,"profit_factor=",DoubleToString(g_metrics.profit_factor,6));
+   FileWrite(h,"expectancy=",DoubleToString(g_metrics.expectancy,6));
+
+   for(int s=0;s<STRATEGY_COUNT;s++)
+   {
+      FileWrite(h,"strategy=",StrategyName(s),
+                "|trades=",IntegerToString(g_audits[s].trades),
+                "|wins=",IntegerToString(g_audits[s].wins),
+                "|losses=",IntegerToString(g_audits[s].losses),
+                "|win_rate=",DoubleToString(g_audits[s].win_rate,4),
+                "|profit_factor=",DoubleToString(g_audits[s].profit_factor,6),
+                "|expectancy=",DoubleToString(g_audits[s].expectancy,6),
+                "|max_drawdown=",DoubleToString(g_audits[s].max_drawdown,6),
+                "|score=",DoubleToString(g_audits[s].score,6));
+   }
+
+   FileWrite(h,"NOTE=Research artifact only; not encrypted and not a profitability guarantee.");
+   FileClose(h);
+}
+
 void RefreshAudit()
 {
    if(Bars<InpAuditBars+30) return;
@@ -178,6 +217,7 @@ void RefreshAudit()
    }
 
    g_last_audit_bars=Bars;
+   WriteAdaptiveReport();
 
    if(InpAutoReport)
    {
@@ -287,7 +327,7 @@ bool AIAllows(int dir,AITradingSignal &ai,bool &ai_ok)
 
 void TryTrade()
 {
-   if(InpDemoOnly) return;
+   if(!InpEnableExecution) return;
    if(OpenTrades()>=InpMaxTrades) return;
    if(!SessionOK() || !CooldownOK()) return;
    if(SpreadPoints()>InpMaxSpreadPoints) return;
