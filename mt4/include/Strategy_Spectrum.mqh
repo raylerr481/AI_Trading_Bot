@@ -33,6 +33,13 @@ struct StrategyAudit
    double payoff;
    int max_consecutive_losses;
    double score;
+   int validation_trades;
+   int validation_wins;
+   double validation_net;
+   double validation_pf;
+   double validation_expectancy;
+   double validation_drawdown;
+   double validation_score;
 };
 
 void ResetAudit(StrategyAudit &a)
@@ -42,6 +49,9 @@ void ResetAudit(StrategyAudit &a)
    a.profit_factor=0.0; a.expectancy=0.0; a.avg_win=0.0;
    a.avg_loss=0.0; a.max_drawdown=0.0; a.payoff=0.0;
    a.max_consecutive_losses=0; a.score=0.0;
+   a.validation_trades=0; a.validation_wins=0; a.validation_net=0.0;
+   a.validation_pf=0.0; a.validation_expectancy=0.0; a.validation_drawdown=0.0;
+   a.validation_score=0.0;
 }
 
 double ATRv(string s,int tf,int shift,int p=14){ return iATR(s,tf,p,shift); }
@@ -126,74 +136,105 @@ void FinalizeAudit(StrategyAudit &a)
    a.avg_loss=(a.losses>0 ? -a.gross_loss/a.losses : 0.0);
    a.payoff=(a.avg_loss!=0.0 ? a.avg_win/MathAbs(a.avg_loss) : 0.0);
 
-   double expectancy_component=MathMax(-2.0,MathMin(2.0,a.expectancy));
-   double pf_component=MathMax(0.0,MathMin(3.0,a.profit_factor));
-   double dd_penalty=MathMax(0.0,MathMin(3.0,a.max_drawdown));
-   double win_component=MathMax(0.0,MathMin(1.0,a.win_rate/100.0));
-   a.score=expectancy_component+pf_component+win_component-dd_penalty;
+   // Research score: profitability is required; drawdown and weak samples are penalized.
+   // A strategy with non-positive expectancy cannot be promoted.
+   double pf_component=MathMin(3.0,MathMax(0.0,a.profit_factor-1.0));
+   double exp_component=MathMin(2.0,MathMax(0.0,a.expectancy));
+   double dd_component=MathMin(3.0,MathMax(0.0,a.max_drawdown));
+   double sample_component=MathMin(1.0,a.trades/50.0);
+   a.score=exp_component+pf_component+sample_component-dd_component;
+}
+
+void EvaluateValidation(StrategyAudit &a)
+{
+   a.validation_expectancy=(a.validation_trades>0 ? a.validation_net/a.validation_trades : 0.0);
+   a.validation_pf=(a.validation_net>0.0 && a.validation_expectancy>0.0 ? 1.0 : 0.0);
+   // Validation score is deliberately conservative: OOS must have positive expectancy.
+   a.validation_score=a.validation_expectancy;
+}
+
+bool SimulateWindow(string s,int tf,int id,int first_shift,int last_shift,int horizon,
+                     double sl_mult,double tp_mult,int &trades,int &wins,double &net,
+                     double &gross_profit,double &gross_loss,double &max_dd)
+{
+   trades=0; wins=0; net=0.0; gross_profit=0.0; gross_loss=0.0; max_dd=0.0;
+   double equity=0.0,peak=0.0;
+
+   for(int shift=first_shift;shift>=last_shift && shift>=horizon+2;shift--)
+   {
+      int dir=StrategySignal(s,tf,shift,id);
+      if(dir==0) continue;
+      double entry=iClose(s,tf,shift);
+      double atr=ATRv(s,tf,shift);
+      if(atr<=0.0) continue;
+
+      double slDist=sl_mult*atr,tpDist=tp_mult*atr;
+      bool resolved=false,win=false;
+      double result=0.0;
+
+      for(int f=shift-1;f>=shift-horizon && f>=1;f--)
+      {
+         double hi=iHigh(s,tf,f),lo=iLow(s,tf,f);
+         if(dir>0)
+         {
+            if(lo<=entry-slDist){resolved=true;result=-slDist;break;}
+            if(hi>=entry+tpDist){resolved=true;win=true;result=tpDist;break;}
+         }
+         else
+         {
+            if(hi>=entry+slDist){resolved=true;result=-slDist;break;}
+            if(lo<=entry-tpDist){resolved=true;win=true;result=tpDist;break;}
+         }
+      }
+      if(!resolved) continue;
+
+      trades++; net+=result;
+      if(result>0.0){wins++;gross_profit+=result;} else gross_loss+=MathAbs(result);
+      equity+=result;
+      if(equity>peak) peak=equity;
+      max_dd=MathMax(max_dd,peak-equity);
+   }
+   return trades>0;
 }
 
 bool AuditStrategy(string s,int tf,int id,int bars_to_test,int horizon,
                    double sl_mult,double tp_mult,StrategyAudit &a)
 {
    ResetAudit(a);
-   int max_shift=MathMin(bars_to_test,Bars(s,tf)-horizon-25);
-   if(max_shift<20) return false;
+   int available=Bars(s,tf)-horizon-25;
+   if(available<80) return false;
 
-   double equity=0.0, peak=0.0;
-   int losing_streak=0;
+   int total=MathMin(bars_to_test,available);
+   int validation_bars=MathMax(30,total/5);
+   int train_first=total;
+   int train_last=validation_bars+1;
 
-   for(int shift=max_shift;shift>=horizon+2;shift--)
-   {
-      int dir=StrategySignal(s,tf,shift,id);
-      if(dir==0) continue;
+   int trades,wins;
+   double net,gp,gl,dd;
+   if(!SimulateWindow(s,tf,id,train_first,train_last,horizon,sl_mult,tp_mult,
+                      trades,wins,net,gp,gl,dd)) return false;
 
-      double entry=iClose(s,tf,shift);
-      double atr=ATRv(s,tf,shift);
-      if(atr<=0.0) continue;
-
-      double slDist=sl_mult*atr, tpDist=tp_mult*atr;
-      bool resolved=false, win=false;
-      double result=0.0;
-
-      for(int f=shift-1;f>=shift-horizon && f>=1;f--)
-      {
-         double hi=iHigh(s,tf,f), lo=iLow(s,tf,f);
-         if(dir>0)
-         {
-            if(lo<=entry-slDist) { resolved=true; win=false; result=-slDist; break; }
-            if(hi>=entry+tpDist) { resolved=true; win=true; result=tpDist; break; }
-         }
-         else
-         {
-            if(hi>=entry+slDist) { resolved=true; win=false; result=-slDist; break; }
-            if(lo<=entry-tpDist) { resolved=true; win=true; result=tpDist; break; }
-         }
-      }
-
-      if(!resolved) continue;
-
-      a.trades++;
-      a.net+=result;
-      equity+=result;
-      if(equity>peak) peak=equity;
-      a.max_drawdown=MathMax(a.max_drawdown,peak-equity);
-
-      if(win)
-      {
-         a.wins++; a.gross_profit+=result; losing_streak=0;
-      }
-      else
-      {
-         a.losses++; a.gross_loss+=MathAbs(result); losing_streak++;
-         a.max_consecutive_losses=MathMax(a.max_consecutive_losses,losing_streak);
-      }
-   }
-
+   a.trades=trades;a.wins=wins;a.losses=trades-wins;a.net=net;
+   a.gross_profit=gp;a.gross_loss=gl;a.max_drawdown=dd;
    FinalizeAudit(a);
+
+   // OOS validation is the newest, untouched segment.
+   int vfirst=validation_bars;
+   int vlast=2;
+   int vt,vw;double vn,vgp,vgl,vdd;
+   if(SimulateWindow(s,tf,id,vfirst,vlast,horizon,sl_mult,tp_mult,
+                     vt,vw,vn,vgp,vgl,vdd))
+   {
+      a.validation_trades=vt;
+      a.validation_wins=vw;
+      a.validation_net=vn;
+      a.validation_drawdown=vdd;
+      a.validation_expectancy=(vt>0 ? vn/vt : 0.0);
+      a.validation_pf=(vgl>0.0 ? vgp/vgl : (vgp>0.0 ? 999.0 : 0.0));
+      a.validation_score=a.validation_expectancy;
+   }
    return (a.trades>=10);
 }
-
 int SelectBestStrategy(StrategyAudit &audits[],int &bestId)
 {
    bestId=-1;
