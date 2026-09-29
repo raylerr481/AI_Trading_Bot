@@ -59,7 +59,7 @@ void MetricsInit(TradingMetrics &m)
    m.best_strategy_score=0.0;
 }
 
-void MetricsRefresh(TradingMetrics &m,string symbol,int timeframe)
+void MetricsRefresh(TradingMetrics &m,string symbol,int timeframe,int magic)
 {
    m.balance=AccountBalance();
    m.equity=AccountEquity();
@@ -71,7 +71,7 @@ void MetricsRefresh(TradingMetrics &m,string symbol,int timeframe)
 
    for(int i=OrdersTotal()-1;i>=0;i--)
       if(OrderSelect(i,SELECT_BY_POS,MODE_TRADES) && OrderSymbol()==symbol)
-         if(OrderType()==OP_BUY || OrderType()==OP_SELL) m.open_trades++;
+         if(OrderMagicNumber()==magic && (OrderType()==OP_BUY || OrderType()==OP_SELL)) m.open_trades++;
 
    double gross_profit=0.0, gross_loss=0.0, sum=0.0, win_sum=0.0, loss_sum=0.0;
    int trades=0,wins=0,losses=0,current_w=0,current_l=0;
@@ -81,6 +81,7 @@ void MetricsRefresh(TradingMetrics &m,string symbol,int timeframe)
    {
       if(!OrderSelect(j,SELECT_BY_POS,MODE_HISTORY)) continue;
       if(OrderSymbol()!=symbol) continue;
+      if(OrderMagicNumber()!=magic) continue;
       if(OrderType()!=OP_BUY && OrderType()!=OP_SELL) continue;
 
       double p=OrderProfit()+OrderSwap()+OrderCommission();
