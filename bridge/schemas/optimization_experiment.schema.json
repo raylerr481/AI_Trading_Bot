@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Bitey Trading Optimization Experiment",
+  "type": "object",
+  "required": ["baseline", "candidate", "constraints", "validation"],
+  "properties": {
+    "baseline": {
+      "type": "object",
+      "required": ["version", "net_profit", "profit_factor", "expectancy", "max_drawdown_pct", "trades"],
+      "properties": {
+        "version": {"type": "string"},
+        "net_profit": {"type": "number"},
+        "profit_factor": {"type": "number"},
+        "expectancy": {"type": "number"},
+        "max_drawdown_pct": {"type": "number"},
+        "trades": {"type": "integer", "minimum": 0}
+      }
+    },
+    "candidate": {
+      "type": "object",
+      "required": ["version", "change_type", "hypothesis"],
+      "properties": {
+        "version": {"type": "string"},
+        "change_type": {"type": "string"},
+        "hypothesis": {"type": "string"},
+        "files": {"type": "array", "items": {"type": "string"}},
+        "parameter_changes": {"type": "object"}
+      }
+    },
+    "constraints": {
+      "type": "object",
+      "properties": {
+        "max_risk_pct": {"type": "number"},
+        "max_trades": {"type": "integer", "minimum": 1},
+        "execution_mode": {"type": "string", "enum": ["analysis_only", "ai_assist", "ai_filter", "demo", "live"]},
+        "require_local_risk_gate": {"type": "boolean"}
+      }
+    },
+    "validation": {
+      "type": "object",
+      "required": ["status"],
+      "properties": {
+        "status": {"type": "string", "enum": ["proposed", "backtest_pending", "backtested", "rejected", "approved_for_demo"]},
+        "same_market_data": {"type": "boolean"},
+        "same_risk_settings": {"type": "boolean"},
+        "out_of_sample_required": {"type": "boolean"},
+        "notes": {"type": "string"}
+      }
+    }
+  }
+}
