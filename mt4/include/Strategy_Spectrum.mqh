@@ -295,14 +295,24 @@ int SelectBestStrategy(StrategyAudit &audits[],int &bestId)
    double best=-999999.0;
    for(int i=0;i<STRATEGY_COUNT;i++)
    {
-      if(audits[i].trades<20) continue;
+      // Require meaningful samples in both training and OOS segments.
+      // This reduces the chance of promoting a strategy from a handful of
+      // unusually favorable historical trades.
+      if(audits[i].trades<30) continue;
       if(audits[i].expectancy<=0.0) continue;
-      if(audits[i].validation_trades<8) continue;
+      if(audits[i].profit_factor<1.05) continue;
+      if(audits[i].validation_trades<12) continue;
       if(audits[i].validation_expectancy<=0.0) continue;
-      if(audits[i].validation_pf<1.05) continue;
+      if(audits[i].validation_pf<1.10) continue;
 
+      // Prefer consistency between training and OOS rather than maximizing
+      // a single-period result. The ratio is capped to avoid rewarding
+      // unstable OOS spikes.
+      double trainExp=MathMax(0.0001,audits[i].expectancy);
+      double consistency=MathMin(1.5,audits[i].validation_expectancy/trainExp);
       double robust_score=audits[i].validation_expectancy
-                         +0.25*audits[i].score
+                         +0.20*audits[i].score
+                         +0.10*consistency
                          -0.10*audits[i].validation_drawdown;
       if(robust_score>best) { best=robust_score; bestId=i; }
    }
