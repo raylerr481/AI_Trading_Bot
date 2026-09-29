@@ -91,10 +91,17 @@ int StrategySignal(string s,int tf,int shift,int id)
    }
    if(id==4)
    {
-      int h=TimeHour(iTime(s,tf,shift));
-      double sessionOpen=iOpen(s,tf,MathMin(20,Bars(s,tf)-shift-2));
-      if(h>=7 && h<=10 && c>sessionOpen) return 1;
-      if(h>=7 && h<=10 && c<sessionOpen) return -1;
+      datetime barTime=iTime(s,tf,shift);
+      int h=TimeHour(barTime);
+      // Use the actual daily open for the same historical day.
+      // This avoids comparing against an arbitrary 20-bar reference.
+      int dayShift=iBarShift(s,PERIOD_D1,barTime,false);
+      if(dayShift<0) return 0;
+      double dayOpen=iOpen(s,PERIOD_D1,dayShift);
+      if(dayOpen<=0.0) return 0;
+
+      if(h>=7 && h<=10 && c>dayOpen) return 1;
+      if(h>=7 && h<=10 && c<dayOpen) return -1;
    }
    if(id==5)
    {
