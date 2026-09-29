@@ -61,11 +61,25 @@ double EMAv(string s,int tf,int shift,int p){ return iMA(s,tf,p,0,MODE_EMA,PRICE
 
 int StrategySignal(string s,int tf,int shift,int id)
 {
+   if(shift<1 || id<0 || id>=STRATEGY_COUNT) return 0;
+
+   int bars=Bars(s,tf);
+   // Every strategy below needs a safe amount of completed history.
+   // Refuse the signal rather than allowing an incomplete indicator window.
+   int requiredBars=225;
+   if(id==2) requiredBars=10;
+   if(id==3 || id==6) requiredBars=35;
+   if(id==5) requiredBars=25;
+   if(id==7) requiredBars=8;
+   if(bars<=shift+requiredBars) return 0;
+
    double c=iClose(s,tf,shift), p=iClose(s,tf,shift+1);
+   if(c<=0.0 || p<=0.0) return 0;
+
    double atr=ATRv(s,tf,shift), adx=ADXv(s,tf,shift), rsi=RSIv(s,tf,shift);
    double fast=EMAv(s,tf,shift,8), slow=EMAv(s,tf,shift,21);
    double macro=EMAv(s,tf,shift,200);
-   if(atr<=0.0) return 0;
+   if(atr<=0.0 || adx<0.0 || rsi<0.0) return 0;
 
    if(id==0)
    {
@@ -105,10 +119,24 @@ int StrategySignal(string s,int tf,int shift,int id)
    }
    if(id==5)
    {
-      double rsiPrev=RSIv(s,tf,shift+5);
-      double cPrev=iClose(s,tf,shift+5);
-      if(c<cPrev && rsi>rsiPrev+5.0 && rsi<45.0) return 1;
-      if(c>cPrev && rsi<rsiPrev-5.0 && rsi>55.0) return -1;
+      // Compare two confirmed local swings rather than simply comparing
+      // the current bar with an arbitrary five-bar offset.
+      int recentLow=iLowest(s,tf,MODE_LOW,5,shift+1);
+      int priorLow=iLowest(s,tf,MODE_LOW,5,shift+6);
+      int recentHigh=iHighest(s,tf,MODE_HIGH,5,shift+1);
+      int priorHigh=iHighest(s,tf,MODE_HIGH,5,shift+6);
+      if(recentLow<0 || priorLow<0 || recentHigh<0 || priorHigh<0) return 0;
+
+      double low1=iLow(s,tf,recentLow), low2=iLow(s,tf,priorLow);
+      double rsiLow1=RSIv(s,tf,recentLow), rsiLow2=RSIv(s,tf,priorLow);
+      double high1=iHigh(s,tf,recentHigh), high2=iHigh(s,tf,priorHigh);
+      double rsiHigh1=RSIv(s,tf,recentHigh), rsiHigh2=RSIv(s,tf,priorHigh);
+
+      // Bullish divergence: lower price low with higher RSI low.
+      if(low1<low2 && rsiLow1>rsiLow2+3.0 && rsiLow1<50.0) return 1;
+
+      // Bearish divergence: higher price high with lower RSI high.
+      if(high1>high2 && rsiHigh1<rsiHigh2-3.0 && rsiHigh1>50.0) return -1;
    }
    if(id==6)
    {
