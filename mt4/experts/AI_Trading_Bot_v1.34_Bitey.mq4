@@ -51,6 +51,10 @@ input string InpCSVFile="AI_Trading_Bot_v1.34_Bitey.csv";
 input bool InpAutoReport=true;
 input bool InpEnableExecution=false;
 input string InpAdaptiveReportFile="BiteyAdaptiveReport.tch";
+input bool InpEnableSBTReport=true;
+input string InpSBTEndpoint="";
+input string InpSBTToken="";
+input int InpSBTTimeoutMs=5000;
 
 TradingMetrics g_metrics;
 StrategyAudit g_audits[STRATEGY_COUNT];
@@ -196,6 +200,84 @@ void WriteAdaptiveReport()
 
    FileWrite(h,"NOTE=Research artifact only; not encrypted and not a profitability guarantee.");
    FileClose(h);
+}
+
+string JsonSafe(string value)
+{
+   StringReplace(value,"\\","\\\\");
+   StringReplace(value,"\"","\\\"");
+   return value;
+}
+
+void SendSBTReport(AITradingSignal &ai,bool ai_ok)
+{
+   if(!InpEnableSBTReport || InpSBTEndpoint=="") return;
+
+   string url=InpSBTEndpoint;
+   if(StringSubstr(url,StringLen(url)-1,1)=="/")
+      url=StringSubstr(url,0,StringLen(url)-1);
+   url=url+"/api/v1/mt4/bitey-report";
+
+   string headers="Content-Type: application/json\\r\\n";
+   if(InpSBTToken!="")
+      headers=headers+"X-MT4-Token: "+InpSBTToken+"\\r\\n";
+
+   string body="{";
+   body+="\"source\":\"AI_Trading_Bot_v1.34_Bitey\",";
+   body+="\"symbol\":\""+JsonSafe(Symbol())+"\",";
+   body+="\"timeframe\":\""+JsonSafe(TFName())+"\",";
+   body+="\"timestamp\":\""+JsonSafe(TimeToString(TimeCurrent(),TIME_DATE|TIME_SECONDS))+"\",";
+   body+="\"mode\":\""+IntegerToString(InpAIMode)+"\",";
+   body+="\"execution_enabled\":"+string(InpEnableExecution?"true":"false")+",";
+   body+="\"regime\":\""+JsonSafe(RegimeName(g_regime))+"\",";
+   body+="\"hurst\":"+DoubleToString(g_metrics.hurst,6)+",";
+   body+="\"best_strategy\":\""+JsonSafe(g_metrics.best_strategy)+"\",";
+   body+="\"best_score\":"+DoubleToString(g_metrics.best_strategy_score,6)+",";
+   body+="\"metrics\":{";
+   body+="\"balance\":"+DoubleToString(g_metrics.balance,2)+",";
+   body+="\"equity\":"+DoubleToString(g_metrics.equity,2)+",";
+   body+="\"drawdown_pct\":"+DoubleToString(g_metrics.drawdown_pct,4)+",";
+   body+="\"profit_factor\":"+DoubleToString(g_metrics.profit_factor,6)+",";
+   body+="\"expectancy\":"+DoubleToString(g_metrics.expectancy,6)+",";
+   body+="\"win_rate\":"+DoubleToString(g_metrics.win_rate,4)+",";
+   body+="\"closed_trades\":"+IntegerToString(g_metrics.closed_trades)+",";
+   body+="\"open_trades\":"+IntegerToString(g_metrics.open_trades)+",";
+   body+="\"spread_points\":"+DoubleToString(g_metrics.spread_points,2)+",";
+   body+="\"atr_points\":"+DoubleToString(g_metrics.atr_points,2)+",";
+   body+="\"adx\":"+DoubleToString(g_metrics.adx,4)+"},";
+   body+="\"ai\":{";
+   body+="\"ok\":"+string(ai_ok?"true":"false")+",";
+   body+="\"action\":\""+JsonSafe(ai.action)+"\",";
+   body+="\"confidence\":"+DoubleToString(ai.confidence,6)+",";
+   body+="\"risk_allowed\":"+string(ai.risk_allowed?"true":"false")+",";
+   body+="\"strategy\":\""+JsonSafe(ai.strategy)+"\",";
+   body+="\"reason\":\""+JsonSafe(ai.reason)+"\"},";
+   body+="\"risk_gate\":{\"execution_enabled\":"+string(InpEnableExecution?"true":"false")+",\"local_authority\":true},";
+   body+="\"report_type\":\"live_snapshot\"";
+   body+="}";
+
+   char data[];
+   char result[];
+   StringToCharArray(body,data,0,StringLen(body));
+   ResetLastError();
+   int code=WebRequest("POST",url,headers,InpSBTTimeoutMs,data,result,headers);
+   if(code<200 || code>=300)
+      Print("Bitey SBT report unavailable code=",IntegerToString(code)," err=",IntegerToString(GetLastError()));
+}
+
+void UpdateRadar(AITradingSignal &ai,bool ai_ok)
+{
+   string text="BITEY IA / SBT TRADING RADAR\\n";
+   text+="--------------------------------\\n";
+   text+=Symbol()+" "+TFName()+" | "+RegimeName(g_regime)+" | H="+DoubleToString(g_metrics.hurst,3)+"\\n";
+   text+="Best: "+g_metrics.best_strategy+" | Score="+DoubleToString(g_metrics.best_strategy_score,2)+"\\n";
+   text+="PF="+DoubleToString(g_metrics.profit_factor,2)+" | Exp="+DoubleToString(g_metrics.expectancy,4);
+   text+=" | Win="+DoubleToString(g_metrics.win_rate,1)+"% | DD="+DoubleToString(g_metrics.drawdown_pct,2)+"%\\n";
+   text+="Trades="+IntegerToString(g_metrics.closed_trades)+" | Equity="+DoubleToString(g_metrics.equity,2)+"\\n";
+   text+="AI: "+(ai_ok ? ai.action : "OFFLINE")+" | Conf="+DoubleToString(ai.confidence*100.0,1)+"%";
+   text+=" | Risk="+(ai.risk_allowed ? "ALLOW" : "BLOCK")+"\\n";
+   text+="SBT: "+(InpSBTEndpoint=="" ? "NOT CONFIGURED" : "REPORT ENABLED");
+   Comment(text);
 }
 
 void RefreshAudit()
@@ -389,6 +471,11 @@ void OnTick()
    if(!NewBar()) return;
 
    RefreshAudit();
+   AITradingSignal radar_ai;
+   bool radar_ok=false;
+   if(InpAIMode!=AI_OFF) radar_ok=AIAnalyzeSnapshot(InpAIEndpoint,InpAIAuthToken,Symbol(),TFName(),Bid,Ask,SpreadPoints(),(g_metrics.atr_points>0.0?SpreadPoints()/g_metrics.atr_points:999.0),g_metrics.atr_points,g_metrics.adx,iRSI(Symbol(),Period(),InpRSIPeriod,PRICE_CLOSE,1),iMA(Symbol(),Period(),InpFastEMA,0,MODE_EMA,PRICE_CLOSE,1),iMA(Symbol(),Period(),InpSlowEMA,0,MODE_EMA,PRICE_CLOSE,1),iMA(Symbol(),Period(),InpMacroEMA,0,MODE_EMA,PRICE_CLOSE,1),0,Close[1],Close[2],(int)MathRound(g_metrics.best_strategy_score),0,"FLAT",RegimeName(g_regime),InpAITimeoutMs,radar_ai);
+   UpdateRadar(radar_ai,radar_ok);
+   SendSBTReport(radar_ai,radar_ok);
    TryTrade();
 
    Print("BiteyIA | regime=",RegimeName(g_regime),
