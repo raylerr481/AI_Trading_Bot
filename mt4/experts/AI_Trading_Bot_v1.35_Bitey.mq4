@@ -337,7 +337,10 @@ void UpdateRadar(AITradingSignal &ai,bool ai_ok)
 
 void RefreshAudit()
 {
-   if(Bars<InpAuditBars+30) return;
+   // Use the available history; do not disable the adaptive selector merely
+   // because the requested audit window is slightly larger than loaded bars.
+   int minimum_bars=MathMax(300,MathMin(InpAuditBars,500));
+   if(Bars<minimum_bars) return;
    if(g_last_audit_bars>=0 && MathAbs(Bars-g_last_audit_bars)<InpAuditRefreshBars) return;
 
    for(int i=0;i<STRATEGY_COUNT;i++)
