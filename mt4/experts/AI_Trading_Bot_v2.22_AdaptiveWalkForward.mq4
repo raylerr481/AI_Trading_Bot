@@ -325,20 +325,61 @@ double LotForRisk(double slPoints){
 }
 int BestSignal(){
    if(gBest<0)return 0;
-   int s=Signal(gBest,1);
-   if(s==0)return 0;
-   // Require a second independent strategy only when another OOS-qualified
-   // strategy agrees. Never let an unqualified strategy override the selector.
-   if(InpRequireSecondConfirmation){
-      int agree=0;
-      for(int i=0;i<STRATEGY_COUNT;i++){
-         if(i==gBest||!Eligible(i)||!Compatible(i,gRegime))continue;
-         if(Signal(i,1)==s)agree++;
+
+   // Primary audited strategy has first priority.
+   int primary=Signal(gBest,1);
+   if(primary!=0){
+      gLastStrategy=gBest;
+
+      if(InpRequireSecondConfirmation){
+         int agree=0;
+         for(int i=0;i<STRATEGY_COUNT;i++){
+            if(i==gBest||!Eligible(i)||!Compatible(i,gRegime))continue;
+            if(Signal(i,1)==primary)agree++;
+         }
+         if(agree==0)return 0;
       }
-      if(agree==0)return 0;
+
+      return primary;
    }
-   gLastStrategy=gBest;
-   return s;
+
+   // Secondary path: use only another OOS-qualified, regime-compatible
+   // strategy when the primary selector is silent. This is designed to
+   // prevent the "two trades in the whole test" failure mode without
+   // opening the gate to unqualified strategies.
+   if(InpAllowSecondaryQualifiedStrategy){
+      int secondary=-1;
+      double bestScore=-1e9;
+
+      for(int i=0;i<STRATEGY_COUNT;i++){
+         if(i==gBest || !Compatible(i,gRegime))
+            continue;
+
+         bool qualified=EligibleStrict(i);
+         if(!qualified && gBestRelaxed)
+            qualified=EligibleRelaxed(i);
+
+         if(!qualified)
+            continue;
+
+         int sig=Signal(i,1);
+         if(sig==0)
+            continue;
+
+         double score=SelectionScore(i);
+         if(score>bestScore){
+            bestScore=score;
+            secondary=i;
+         }
+      }
+
+      if(secondary>=0){
+         gLastStrategy=secondary;
+         return Signal(secondary,1);
+      }
+   }
+
+   return 0;
 }
 void Execute(int dir){
    if(!InpEnableTrading && !(IsTesting()&&InpBacktestExecution))return;
@@ -354,11 +395,11 @@ void Execute(int dir){
    double lot=LotForRisk(sl/Point);if(lot<=0)return;
    RefreshRates();ResetLastError();
    int ticket=-1;
-   string c="B21|"+SName(gLastStrategy);
+   string c="B22|"+SName(gLastStrategy);
    if(dir>0)ticket=OrderSend(Symbol(),OP_BUY,lot,Ask,5,NormalizeDouble(Ask-sl,Digits),NormalizeDouble(Ask+tp,Digits),c,InpMagic,0,clrNONE);
    else ticket=OrderSend(Symbol(),OP_SELL,lot,Bid,5,NormalizeDouble(Bid+sl,Digits),NormalizeDouble(Bid-tp,Digits),c,InpMagic,0,clrNONE);
-   if(ticket>0){gLastTrade=TimeCurrent();Print("B21 EXEC OK ticket=",ticket," strategy=",SName(gLastStrategy)," dir=",dir>0?"BUY":"SELL"," lot=",DoubleToString(lot,2));}
-   else Print("B21 EXEC FAIL error=",GetLastError());
+   if(ticket>0){gLastTrade=TimeCurrent();Print("B22 EXEC OK ticket=",ticket," strategy=",SName(gLastStrategy)," dir=",dir>0?"BUY":"SELL"," lot=",DoubleToString(lot,2));}
+   else Print("B22 EXEC FAIL error=",GetLastError());
 }
 void WriteDecision(int dir){
    if(!InpWriteCSV||!IsTesting())return;
@@ -394,7 +435,7 @@ void OnTick(){
    int dir=BestSignal();
    if(dir!=0)gLastDir=dir;
    WriteDecision(dir);
-   Comment("BITEY IA v2.20\nRegime: ",RName(gRegime),
+   Comment("BITEY IA v2.22\nRegime: ",RName(gRegime),
            "\nBest OOS strategy: ",(gBest>=0?SName(gBest):"NONE"),
            "\nSignal: ",dir>0?"BUY":dir<0?"SELL":"HOLD",
            "\nOOS PF: ",gBest>=0?DoubleToString(gOOS[gBest].pf,2):"-",
