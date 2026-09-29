@@ -241,8 +241,16 @@ int SelectBestStrategy(StrategyAudit &audits[],int &bestId)
    double best=-999999.0;
    for(int i=0;i<STRATEGY_COUNT;i++)
    {
-      if(audits[i].trades<10) continue;
-      if(audits[i].score>best) { best=audits[i].score; bestId=i; }
+      if(audits[i].trades<20) continue;
+      if(audits[i].expectancy<=0.0) continue;
+      if(audits[i].validation_trades<8) continue;
+      if(audits[i].validation_expectancy<=0.0) continue;
+      if(audits[i].validation_pf<1.05) continue;
+
+      double robust_score=audits[i].validation_expectancy
+                         +0.25*audits[i].score
+                         -0.10*audits[i].validation_drawdown;
+      if(robust_score>best) { best=robust_score; bestId=i; }
    }
    return bestId;
 }
