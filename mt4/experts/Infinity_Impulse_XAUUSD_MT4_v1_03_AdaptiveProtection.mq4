@@ -504,8 +504,7 @@ void ManagePositions()
       double fav = dir * (price - open);
       double peak = GetPeak(tk,idx);
       if(fav > peak) { SavePeak(tk,idx,fav); peak=fav; }
-      if(TimeCurrent() - g_lastMod[idx] < InpModifyIntervalSec) continue;
-
+      // Exit protection is evaluated on every tick; modification throttling applies only to SL/TP edits.
       // Estimate close-side costs conservatively: one extra commission leg plus slippage reserve.
       double closeCost = MathAbs(OrderCommission()) + InpCloseSlippageReservePts*g_pt*OrderLots()*ValPerUnit();
       double peakGross = peak*OrderLots()*ValPerUnit();
@@ -551,6 +550,7 @@ void ManagePositions()
          }
       }
       else if(GlobalVariableCheck(nk)) GlobalVariableDel(nk);
+      if(TimeCurrent() - g_lastMod[idx] < InpModifyIntervalSec) continue;
       if(InpTrailEnabled && fav >= risk * InpTrailStartR)
       {
          double cand2 = price - dir * atr * InpTrailAtr;
@@ -639,6 +639,10 @@ void TryAddOns()
       if(lots < MarketInfo(g_sym, MODE_MINLOT)) continue;
       if(spread > slDist * InpMaxSpreadPctSL / 100.0) continue;
       if(!MarginOk(type, lots)) continue;
+      double addOnRisk=lots*slDist*v;
+      double totalRiskCap=AccountBalance()*InpMaxTotalRiskPct/100.0;
+      if(totalRiskCap<=0.0 || OpenRiskMoney()+addOnRisk>totalRiskCap)
+      { Print("ADDON_SKIP_TOTAL_RISK_CAP | parent=",tk," openRiskUSD=",DoubleToString(OpenRiskMoney(),2)," addOnRiskUSD=",DoubleToString(addOnRisk,2)," capUSD=",DoubleToString(totalRiskCap,2)); continue; }
       double tpDist = MathMax(atr * InpAddOnTpAtr, minStop + g_pt);
 
       int r = OpenOrder(type, lots, slDist, tpDist, "Inf LEV v" + EA_VER);
@@ -727,7 +731,8 @@ int OnInit()
    // recuperar ordenes abiertas
    for(int i = OrdersTotal() - 1; i >= 0; i--)
       if(OrderSelect(i, SELECT_BY_POS, MODE_TRADES) && OrderSymbol() == g_sym && OrderMagicNumber() == InpMagic) TrkFind(OrderTicket(), true);
-   if(StringFind(StringToUpper(g_sym),"XAU")<0 && StringFind(StringToUpper(g_sym),"GOLD")<0)
+   string symUpper=g_sym; StringToUpper(symUpper);
+   if(StringFind(symUpper,"XAU")<0 && StringFind(symUpper,"GOLD")<0)
    { Print("INFINITY_INIT_FAIL | v1.03 solo admite XAUUSD/GOLD; detected=",g_sym); return(INIT_FAILED); }
    Print("INFINITY_INIT | v", EA_VER, " symbol=", g_sym, " digits=", g_dig, " point=", DoubleToString(g_pt, g_dig),
          " minSLusd=", DoubleToString(InpMinSLPts * g_pt, 2), " stopLevelPts=", DoubleToString(MarketInfo(g_sym, MODE_STOPLEVEL), 0),
