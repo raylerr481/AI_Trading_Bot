@@ -72,7 +72,8 @@ input double          InpLockKeepPct       = 55.0;        // Asegura este % del 
 input double          InpLockBufferPts     = 15;          // Colchon sobre entrada (cubre spread y comision)
 input bool            InpTrailEnabled      = true;
 input double          InpTrailStartR       = 1.0;         // Trailing ATR desde 1R
-input double          InpTrailAtr          = 1.0;         // Distancia del trailing (ATR)
+input double          InpTrailAtr          = 1.0;         // Distancia base del trailing (ATR)
+input double          InpWeakTrendTrailAtr = 0.65;        // Aprieta trailing cuando retrocede desde el pico
 input double          InpMinStepAtr        = 0.05;        // Paso minimo para modificar SL (ATR)
 input int             InpModifyIntervalSec = 5;           // Segundos minimos entre modificaciones por orden
 
@@ -506,7 +507,8 @@ void ManagePositions()
       if(fav > peak) { SavePeak(tk,idx,fav); peak=fav; }
       // Exit protection is evaluated on every tick; modification throttling applies only to SL/TP edits.
       // Estimate close-side costs conservatively: one extra commission leg plus slippage reserve.
-      double closeCost = MathAbs(OrderCommission()) + InpCloseSlippageReservePts*g_pt*OrderLots()*ValPerUnit();
+      double closeCost = 2.0*MathAbs(OrderCommission()) + MathMax(0.0,-OrderSwap()) +
+                         InpCloseSlippageReservePts*g_pt*OrderLots()*ValPerUnit();
       double peakGross = peak*OrderLots()*ValPerUnit();
       double netPeak = peakGross - closeCost;
       double newSL = sl, newTP = tp;
@@ -553,7 +555,9 @@ void ManagePositions()
       if(TimeCurrent() - g_lastMod[idx] < InpModifyIntervalSec) continue;
       if(InpTrailEnabled && fav >= risk * InpTrailStartR)
       {
-         double cand2 = price - dir * atr * InpTrailAtr;
+         double trailAtr=InpTrailAtr;
+         if(peak>0.0 && fav<peak*0.70) trailAtr=MathMin(trailAtr,InpWeakTrendTrailAtr);
+         double cand2 = price - dir * atr * trailAtr;
          if(Better(type, cand2, newSL)) { newSL = cand2; why = "TRAIL"; }
       }
       if(InpTpExtendEnabled && tp > 0.0)
@@ -752,7 +756,7 @@ int OnInit()
    Print("INFINITY_CONFIG | lock=", InpLockEnabled, " trigR=", DoubleToString(InpLockTriggerR, 2), " keepPct=", DoubleToString(InpLockKeepPct, 0),
          " trail=", InpTrailEnabled, " tpExtend=", InpTpExtendEnabled, " addOn=", InpAddOnEnabled, " maxScouts=", InpMaxScouts,
          " maxPerDir=", InpMaxPerDirection, " maxAddOns=", InpMaxAddOns,
-         " adaptiveRisk=",InpAdaptiveRiskEnabled," minLotStrict=true microLoss=",InpMicroLossExitEnabled,
+         " adaptiveRisk=",InpAdaptiveRiskEnabled," minLotStrict=true microLoss=",InpMicroLossExitEnabled," weakTrailATR=",DoubleToString(InpWeakTrendTrailAtr,2),
          " negativeDuration=",InpLossDurationEnabled," newsProtection=UNAVAILABLE_NO_COMPATIBLE_FEED");
    return(INIT_SUCCEEDED);
 }
