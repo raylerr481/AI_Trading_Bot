@@ -49,6 +49,7 @@
 //| Loss response scales new-entry risk; open positions retain existing SL/TP management. |
 //| v1.5.61: adds Infinity Impulse (closed-bar BB20 breakout + EMA50) as a bounded ranking evidence signal across the existing multi-asset universe; no entry/risk bypass. |
 //+------------------------------------------------------------------+
+//| v1.5.61: Infinity Impulse BB20 breakout + EMA50 closed-bar evidence is applied as a bounded ranking adjustment across the existing multi-asset universe. Existing family consensus, quote/news gates, portfolio risk and exit protections remain authoritative.
 #property strict
 #property version   "1.561"
 #property description "Bitey v1.5.61: multi-asset Infinity Impulse evidence + v1.5.60 pre-news protection"
@@ -966,6 +967,7 @@ int OnInit()
       Print("ORDER_COMMENT_CHECK | comment=","Bitey LEV v"+EA_VERSION," length=",cLen," status=",(cLen<=31?"OK":"TOO_LONG_BROKER_WILL_BLANK_IT_SHORTEN_EA_VERSION"));
       if(cLen>31) Alert("Bitey: order comment longer than 31 chars - leveraged add-ons will NOT be recognised. Shorten EA_VERSION.");
    }
+   Print("V1561_INFINITY_IMPULSE | enabled=",(InpInfinityImpulseEvidenceEnabled?"true":"false")," ema=",InpInfinityImpulseEMAPeriod," bb=",InpInfinityImpulseBBPeriod," deviation=",DoubleToString(InpInfinityImpulseBBDeviation,2)," bonus=",DoubleToString(InpInfinityImpulseScoreBonus,1)," oppositionPenalty=",DoubleToString(InpInfinityImpulseOppositionPenalty,1)," mode=RANKING_EVIDENCE_ONLY universe=ALL_ELIGIBLE_SYMBOLS");
    Print("V1560_PRE_NEWS_PROTECT | enabled=",(InpNewsPreProtectEnabled?"true":"false")," leadMin=",InpNewsPreProtectLeadMin," postMin=",InpNewsPostProtectMin," minNetUSD=",DoubleToString(InpNewsProtectMinNetUSD,2)," keepPct=",DoubleToString(InpNewsProtectKeepPct,0)," blockAddOns=",(InpNewsBlockAddOns?"true":"false"));
    Print("V1559_FAST_LOCK | enabled=",(InpFastLockEnabled?"true":"false")," triggerNetUSD=",DoubleToString(InpFastLockTriggerNetUSD,2)," keepPct=",DoubleToString(InpFastLockKeepPct,0)," minNetUSD=",DoubleToString(InpFastLockMinNetUSD,2)," slModifyMinStepATR=",DoubleToString(InpAdaptiveSLModifyMinStepATR,2)," slModifyIntervalSec=",InpAdaptiveSLModifyMinIntervalSeconds);
    Print("V1557_NEWS_GUARD | enabled=",(InpNewsGuardEnabled?"true":"false")," shadowOnly=",(InpNewsGuardShadowOnly?"true":"false")," file=",InpNewsFileName," common=",(InpNewsUseCommonFolder?"true":"false")," maxAgeMin=",InpNewsFileMaxAgeMin," failMode=OPEN scorePenalty=",(InpDailyAdaptiveScorePenaltyEnabled?"ON":"OFF")," evidenceSec=",MathMax(5,InpTradeProtectionEvidenceSec));
