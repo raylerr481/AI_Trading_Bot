@@ -5,7 +5,7 @@ Experimental fork of `Infinity_Impulse_XAUUSD_MT4_v1_02.mq4`. The v1.02 source i
 ## Scope retained
 - XAUUSD/GOLD only (broker suffixes are accepted when the symbol contains XAU or GOLD).
 - Original Bollinger breakout + EMA entry signal, timeframe, entry window, ATR SL/TP, spread filters and broker margin check retained.
-- Existing lock, trailing and TP extension remain; SL modifications are monotonic (the EA only accepts a more protective SL).
+- Existing lock, ATR trailing and TP extension remain; trailing tightens when price pulls back materially from its favorable peak. SL modifications are monotonic (the EA only accepts a more protective SL).
 
 ## v1.03 changes
 - Persist favorable peak price distance in MT4 Global Variables (`INFP_<ticket>`) and recover it after EA restart.
@@ -14,7 +14,7 @@ Experimental fork of `Infinity_Impulse_XAUUSD_MT4_v1_02.mq4`. The v1.02 source i
 - Strict minimum-lot handling: broker minimum is rejected if its modeled stop risk exceeds the approved risk budget. The input multiplier is clamped to at most 1.0.
 - Early loss cut after the configured minimum age when net loss reaches the configured percentage of initial modeled risk.
 - Persistent negative-duration timer; default initial wait 30 minutes, shortened by 5 minutes for each consecutive closed loss, floor 5 minutes. Duration exit is limited to small losses (default 35% of initial modeled risk); larger losses are left to the broker SL / other protections.
-- Profit lock estimates net peak after current commission and a close-side slippage reserve before converting the retained net-profit target into an SL.
+- Profit lock estimates net peak after entry/estimated exit commission, negative swap and a close-side slippage reserve before converting the retained net-profit target into an SL.
 - Add-on opens now obey the same aggregate open-risk cap; failed add-on opens do not consume the parent add-on counter.
 
 ## Explicit limitation
