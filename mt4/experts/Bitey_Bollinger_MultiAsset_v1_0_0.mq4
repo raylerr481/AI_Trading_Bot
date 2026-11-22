@@ -512,6 +512,7 @@ bool SendScout(string symbol,int signal,string signalName)
 
 void ManageOpenPositions()
 {
+   NewsGuardLoad();
    for(int i=OrdersTotal()-1;i>=0;i--)
    {
       if(!OrderSelect(i,SELECT_BY_POS,MODE_TRADES)) continue;
