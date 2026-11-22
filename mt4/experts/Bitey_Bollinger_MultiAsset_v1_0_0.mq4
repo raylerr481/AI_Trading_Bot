@@ -77,6 +77,10 @@ input bool             InpNewsUseCommonFolder   = true;
 input int              InpNewsFileMaxAgeMin     = 30;
 input bool             InpNewsUsdAffectsUsdt    = true;
 input int              InpNewsLogThrottleMin    = 15;
+input int              InpNewsPreProtectLeadMin  = 5;
+input int              InpNewsPostProtectMin     = 3;
+input double           InpNewsProtectMinNetUSD   = 0.10;
+input double           InpNewsProtectKeepPct     = 75.0;
 
 //--- State
 string   g_symbols[MAX_SCAN];
@@ -93,6 +97,7 @@ string   g_newsScope[NEWS_MAX_ROWS];
 string   g_newsKey[NEWS_MAX_ROWS];
 datetime g_newsFrom[NEWS_MAX_ROWS];
 datetime g_newsUntil[NEWS_MAX_ROWS];
+datetime g_newsEvent[NEWS_MAX_ROWS];
 string   g_newsReason[NEWS_MAX_ROWS];
 string   g_newsLogSymbol[NEWS_MAX_ROWS];
 datetime g_newsLogTime[NEWS_MAX_ROWS];
@@ -327,6 +332,7 @@ void NewsGuardLoad()
       g_newsFrom[g_newsCount]=(datetime)StrToInteger(parts[2]);
       g_newsUntil[g_newsCount]=(datetime)StrToInteger(parts[3]);
       g_newsReason[g_newsCount]=parts[5];
+      g_newsEvent[g_newsCount]=(n>=7?(datetime)StrToInteger(parts[6]):g_newsFrom[g_newsCount]+900);
       g_newsCount++;
    }
    FileClose(h);
@@ -406,6 +412,34 @@ void NewsShadowLog(string symbol)
       Print("NEWS_GUARD_SHADOW_WOULD_BLOCK | symbol=",symbol," reason=",why,
             " shadowOnly=true action=SCOUT_ENTRY_NOT_BLOCKED serverTime=",TimeToString(TimeCurrent(),TIME_DATE|TIME_SECONDS));
    // Safety invariant: no return value from this function can veto a SCOUT.
+}
+
+bool NewsEventNear(string symbol,double &minutesToEvent,string &why)
+{
+   minutesToEvent=0.0; why="";
+   if(!InpNewsGuardEnabled || !g_newsFileOk || g_newsCount<=0) return(false);
+   string c1,c2; NewsSymbolCurrencies(symbol,c1,c2);
+   string us=Upper(symbol);
+   datetime now=TimeGMT();
+   bool found=false; double best=0.0;
+   for(int i=0;i<g_newsCount;i++)
+   {
+      bool hit=false;
+      if(g_newsScope[i]=="ALL") hit=true;
+      else if(g_newsScope[i]=="SYM" && g_newsKey[i]==us) hit=true;
+      else if(g_newsScope[i]=="CCY" && StringLen(g_newsKey[i])>0 &&
+              (g_newsKey[i]==c1 || g_newsKey[i]==c2)) hit=true;
+      if(!hit) continue;
+      double mins=(double)(g_newsEvent[i]-now)/60.0;
+      if(mins>InpNewsPreProtectLeadMin || mins<-InpNewsPostProtectMin) continue;
+      if(!found || MathAbs(mins)<MathAbs(best))
+      {
+         found=true; best=mins;
+         why=g_newsScope[i]+":"+g_newsKey[i]+":"+g_newsReason[i];
+      }
+   }
+   minutesToEvent=best;
+   return(found);
 }
 
 //--- Entry and execution
@@ -510,6 +544,37 @@ void ManageOpenPositions()
          if(type==OP_BUY && trail>candidate+point) { candidate=trail; improve=true; }
          if(type==OP_SELL && (candidate<=0.0 || trail<candidate-point)) { candidate=trail; improve=true; }
       }
+
+      // Event-window protection: secure a fraction of existing net profit with SL only.
+      // It never widens an SL and never changes or vetoes a SCOUT entry.
+      double eventMinutes=0.0; string eventWhy="";
+      double liveNet=OrderProfit()+OrderSwap()+OrderCommission();
+      if(liveNet>=InpNewsProtectMinNetUSD && InpNewsProtectKeepPct>0.0 &&
+         InpNewsProtectKeepPct<100.0 && NewsEventNear(symbol,eventMinutes,eventWhy))
+      {
+         double moneyPerPrice=PriceValuePerUnit(symbol)*OrderLots();
+         double closeCost=MathAbs(OrderCommission())+MathMax(0.0,-OrderSwap());
+         if(moneyPerPrice>0.0)
+         {
+            double targetNet=liveNet*InpNewsProtectKeepPct/100.0;
+            double requiredGross=targetNet-OrderSwap()-OrderCommission()+closeCost;
+            double lockMove=requiredGross/moneyPerPrice;
+            double newsSL=OrderOpenPrice()+dir*lockMove;
+            double minDistNews=MathMax(MarketInfo(symbol,MODE_STOPLEVEL),MarketInfo(symbol,MODE_FREEZELEVEL))*point;
+            bool valid=(type==OP_BUY ? (newsSL>OrderOpenPrice() && newsSL<bid-minDistNews)
+                                    : (newsSL<OrderOpenPrice() && newsSL>ask+minDistNews));
+            bool tighter=(type==OP_BUY ? (candidate<=0.0 || newsSL>candidate+point)
+                                       : (candidate<=0.0 || newsSL<candidate-point));
+            if(valid && tighter)
+            {
+               candidate=newsSL; improve=true;
+               Print("NEWS_PRE_PROTECT_STOP_ARMED | ticket=",OrderTicket()," symbol=",symbol,
+                     " netNow=",DoubleToString(liveNet,2)," protectedNetPct=",DoubleToString(InpNewsProtectKeepPct,1),
+                     " minutesToEvent=",DoubleToString(eventMinutes,1)," event=",eventWhy,
+                     " action=PROTECTIVE_SL_ONLY_NO_WIDENING");
+            }
+         }
+      }
       if(!improve) continue;
       // Never widen the original or already-tightened stop.
       if(type==OP_BUY && OrderStopLoss()>0.0 && candidate<=OrderStopLoss()+point) continue;
@@ -541,6 +606,13 @@ void ManageOpenPositions()
 bool TryFundedAddOn(string symbol,int signal,string signalName)
 {
    if(!InpEnableFundedAddOns || InpMaxAddOnsPerSymbol<=0) return(false);
+   string newsWhy="";
+   if(NewsGuardWouldBlock(symbol,newsWhy))
+   {
+      Print("NEWS_GUARD_LEVERAGED_ADDON_BLOCK | symbol=",symbol," reason=",newsWhy,
+            " action=FUNDED_ADDON_BLOCKED_SCOUT_POLICY_REMAINS_SHADOW");
+      return(false);
+   }
    int cmd=(signal>0?OP_BUY:OP_SELL);
    int parent=-1, addons=0;
    double lockedFunding=0.0, parentLots=0.0, parentRisk=0.0;
