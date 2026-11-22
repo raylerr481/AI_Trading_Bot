@@ -170,12 +170,9 @@ bool QuoteReady(string symbol,string &why)
    double bid=MarketInfo(symbol,MODE_BID), ask=MarketInfo(symbol,MODE_ASK);
    double point=MarketInfo(symbol,MODE_POINT);
    if(bid<=0.0 || ask<=bid || point<=0.0) { why="INVALID_BID_ASK_POINT"; return(false); }
-   if(!IsCryptoSymbol(symbol) || !InpCryptoExpected24x7)
-   {
-      // Broker permission and a fresh tick are the authoritative gates.
-      // The broker may close any instrument, including a crypto CFD.
-      if(!IsTradeAllowed()) { why="TERMINAL_TRADE_NOT_ALLOWED"; return(false); }
-   }
+   // A 24/7 crypto calendar never overrides terminal/account permissions.
+   // Broker permission and a fresh tick remain authoritative for every asset.
+   if(!IsTradeAllowed()) { why="TERMINAL_TRADE_NOT_ALLOWED"; return(false); }
    return(true);
 }
 
@@ -561,6 +558,7 @@ bool TryFundedAddOn(string symbol,int signal,string signalName)
       if(secured>0.0) lockedFunding+=secured;
    }
    if(parent<0 || addons>=InpMaxAddOnsPerSymbol || !OrderSelect(parent,SELECT_BY_TICKET)) return(false);
+   if(CountOurPositions("",-1)>=InpMaxOpenPositions) return(false);
    if(parentRisk<=0.0 || parentLots<=0.0) return(false);
    double parentR=(cmd==OP_BUY?MarketInfo(symbol,MODE_BID)-OrderOpenPrice():OrderOpenPrice()-MarketInfo(symbol,MODE_ASK))/parentRisk;
    if(parentR<InpAddOnMinParentR || lockedFunding<=0.0) return(false);
@@ -643,6 +641,7 @@ void OnTimer()
 {
    if(g_symbolCount<=0 || TimeCurrent()-g_lastScan<MathMax(1,InpScanIntervalSeconds)) return;
    g_lastScan=TimeCurrent();
+   ManageOpenPositions();
    for(int i=0;i<g_symbolCount;i++) ScanOne(i);
 }
 
